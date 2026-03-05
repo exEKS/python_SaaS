@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.env/
+.env.*
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Data (якщо великі файли)
+data/*.csv
+data/*.xlsx
+data/*.json
+
+# Models (якщо великі моделі)
+models/*.pt
+models/*.pth
+models/*.pkl
+
+# Node (якщо frontend)
+node_modules/
