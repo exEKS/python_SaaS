@@ -21,7 +21,7 @@
 | Resource | URL |
 |----------|-----|
 | GitHub Repo | https://github.com/exEKS/python_SaaS.git |
-| Google Drive | *(to be added)* |
+| Google Drive | https://drive.google.com/drive/folders/1ZVW1njMU2iy5T0t2-2ByaOsN6rpm6I72?usp=share_link |
 
 ---
 
