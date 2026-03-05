@@ -9,10 +9,10 @@
 | Role | Name |
 |------|------|
 | Team Leader | Ковальов Євген |
-| Member | Барабанова Софія |
 | Member | Тавлуй Софія |
-| Member | Сніховська Владислава |
 | Member | Поляков Кирило |
+| Member | Сніховська Владислава |
+| Member | Барабанова Софія |
 
 ---
 
@@ -188,14 +188,8 @@ UKRAINE_ALARM_TOKEN=your_token_here
 |-------------|----------------|
 | Kovalov Evgen | README.md, System architecture diagram, Module descriptions & I/O diagrams, Data analysis plan & text preparation strategy, Final PDF report compilation, Code Review |
 | Tavlui Sofia | *(to be filled)* |
-| Polyakov Kirilo | *(to be filled)* |
 | Snikhovska Vladyslava | *(to be filled)* |
+| Polyakov Kirilo | *(to be filled)* |
 | Barabanova Sofia | *(to be filled)* |
 
 >  Screenshots of collected data, Postman API responses (VisualCrossing and Alarms API), and final GitHub / Google Drive links must be inserted by the responsible members before the **06/03/2026** deadline.
-
----
-
-## License
-
-For internal academic use only. Historical war events data provided by Богдан Васильчук via air-alarms.in.ua — must not be distributed or uploaded publicly.
