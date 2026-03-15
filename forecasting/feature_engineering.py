@@ -38,7 +38,7 @@ def check_and_run_engineering(input_file):
         )
 
         # 3. ЗБЕРЕЖЕННЯ
-        output_path = "../data_receiver/features.csv"
+        output_path = "features.csv"
         df.to_csv(output_path, index=False)
 
         print(f"Успіх! Розрахунки завершені.")
@@ -51,5 +51,5 @@ def check_and_run_engineering(input_file):
 
 
 if __name__ == "__main__":
-    run_file = "../data_receiver/tokenized_data.csv"
+    run_file = "tokenized_data.csv"
     check_and_run_engineering(run_file)
