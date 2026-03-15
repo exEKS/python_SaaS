@@ -65,7 +65,7 @@ def auto_tokenize_dataframe(file_path):
 
 
 if __name__ == "__main__":
-    input_file = "merged_data.csv"
+    input_file = "../data_receiver/merged_data.csv"
     final_df = auto_tokenize_dataframe(input_file)
 
     output_name = "tokenized_data.csv"
