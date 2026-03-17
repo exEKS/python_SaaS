@@ -1,67 +1,90 @@
 import requests
 import pandas as pd
-from datetime import datetime
 import time
+from datetime import datetime, timedelta, timezone
 
-# 1. Налаштування пошуку
-subreddit = "ukraine"
-total_posts_needed = 200  # Кількість постів для повноцінного датасету
-posts_data = []
-after = None  # Маркер наступної сторінки Reddit
-headers = {'User-Agent': 'WarWatch-Project/1.0'}
+# 1. Налаштування
+subreddits = ["CredibleDefense"]
+# Встановлюємо ціль: 3 роки тому
+stop_date = datetime.now(timezone.utc) - timedelta(days=3 * 365)
+headers = {'User-Agent': 'WarWatch-Research-Student/2.0'}
 
-print(f"Починаємо збір повноцінного датасету з r/{subreddit}...")
+all_posts = []
 
-# Цикл для збору декількох сторінок даних
-while len(posts_data) < total_posts_needed:
-    # Формуємо URL: додаємо маркер 'after' для переходу на наступну сторінку
-    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=100"
-    if after:
-        url += f"&after={after}"
+print(f" Починаємо збір даних з тредів: {', '.join(subreddits)}...")
 
-    # Виконуємо запит
-    response = requests.get(url, headers=headers)
+# Цикл по кожному сабреддіту
+for subreddit in subreddits:
+    print(f"\n--- Скануємо r/{subreddit} ---")
+    after = None  # Маркер для переходу на наступну сторінку
 
-    if response.status_code != 200:
-        print(f"Помилка доступу: {response.status_code}")
-        break
+    while True:
+        # Формуємо запит (максимум 100 постів за раз)
+        url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=100"
+        if after:
+            url += f"&after={after}"
 
-    # Парсимо JSON
-    data = response.json()
-    batch = data['data']['children']
+        response = requests.get(url, headers=headers)
 
-    # Витягуємо потрібні поля для кожного поста
-    for post in batch:
-        item = post['data']
-        posts_data.append({
-            # Конвертуємо час Unix у формат РРРР-ММ-ДД
-            'date': datetime.fromtimestamp(item['created_utc']).strftime('%Y-%m-%d'),
-            'title': item['title'],  # Заголовок
-            'text': item['selftext'],  # Текст поста
-            'score': item['ups'],  # Рейтинг (лайки)
-            'comments': item['num_comments'],  # Кількість коментарів
-            'subreddit': subreddit  # Джерело
-        })
+        if response.status_code != 200:
+            print(f" Помилка на r/{subreddit}: {response.status_code}. Переходимо до наступного.")
+            break
 
-    # Оновлюємо маркер для наступної сторінки
-    after = data['data']['after']
-    print(f"Вже зібрано: {len(posts_data)} постів...")
+        data = response.json()
+        posts = data['data']['children']
 
-    # Якщо наступних сторінок немає — зупиняємось
-    if not after:
-        break
+        if not posts:
+            print(f" У r/{subreddit} більше постів немає.")
+            break
 
-    # Невелика пауза, щоб Reddit не заблокував за швидкість
-    time.sleep(1)
+        last_post_date = None
 
-# 2. Збереження результату
-# Створюємо таблицю
-df = pd.DataFrame(posts_data)
+        for post in posts:
+            item = post['data']
+            # Конвертуємо час у формат UTC для порівняння
+            post_date = datetime.fromtimestamp(item['created_utc'], tz=timezone.utc)
+            last_post_date = post_date
 
-# Зберігаємо файл безпосередньо у папку зі скриптом, як було раніше
-filename = "reddit_dataset.csv"
-df.to_csv(filename, index=False)
+            # Перевіряємо, чи ми не зайшли далі, ніж за 3 роки
+            if post_date < stop_date:
+                break
 
-print("-" * 30)
-print(f"Збір завершено! Файл збережено: {filename}")
-print(f"Загальна кількість рядків: {len(df)}")
+            all_posts.append({
+                'subreddit': subreddit, # Додаємо назву треду для датасету
+                'date': post_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'title': item['title'],
+                'text': item['selftext'],
+                'score': item['ups'],
+                'comments': item['num_comments']
+            })
+
+        print(f" Зібрано пакет. Всього вже: {len(all_posts)} постів. Остання дата: {last_post_date.strftime('%Y-%m-%d')}")
+
+        # Якщо ми зустріли пост, старіший за нашу дату, або дійшли до ліміту API
+        if last_post_date < stop_date:
+            print(f" Для r/{subreddit} досягнуто часового ліміту.")
+            break
+
+        # Оновлюємо маркер 'after'
+        after = data['data']['after']
+        if not after:
+            print(f" У r/{subreddit} сторінки закінчилися (ліміт API).")
+            break
+
+        # Пауза, щоб не заблокували
+        time.sleep(1.5)
+
+# 2. Збереження результатів у CSV
+if all_posts:
+    df = pd.DataFrame(all_posts)
+    output_file = "reddit_data.csv"
+
+    # Зберігаємо прямо в папку зі скриптом, з підтримкою укр літер
+    df.to_csv(output_file, index=False, encoding='utf-8-sig')
+
+    print("-" * 30)
+    print(f" Місія виконана!")
+    print(f" Загалом зібрано постів: {len(df)}")
+    print(f" Файл збережено: {output_file}")
+else:
+    print(" Не вдалося зібрати жодного поста.")
