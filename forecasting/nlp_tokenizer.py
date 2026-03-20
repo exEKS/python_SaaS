@@ -1,73 +1,61 @@
 import pandas as pd
-import nltk
 import re
+import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.util import ngrams
 
+# 1. Підготовка інструментів аналізу
+nltk.download('punkt')
+nltk.download('stopwords')
+stop_words_en = set(stopwords.words('english'))
 
 
-def prepare_nltk():
-    resources = ['punkt', 'punkt_tab', 'stopwords']
-    for res in resources:
-        try:
-            if res == 'stopwords':
-                nltk.data.find('corpora/stopwords')
-            elif res == 'punkt':
-                nltk.data.find('tokenizers/punkt')
-            else:
-                nltk.data.find('tokenizers/punkt_tab')
-        except LookupError:
-            print(f"Завантаження ресурсу: {res}...")
-            nltk.download(res)
+def tokenize_content(text):
+    # Обробка порожніх значень, що критично для початкових етапів часового ряду
+    if not isinstance(text, str) or text.strip() == "" or text.lower() == 'nan':
+        return [], []
+
+    # Очищення та приведення до нижнього регістру
+    text_clean = re.sub(r'[^\w\s]', '', text.lower())
+    tokens = word_tokenize(text_clean)
+
+    # Видалення стоп-слів та шумів (токенів довжиною < 2)
+    filtered = [w for w in tokens if w not in stop_words_en and len(w) > 1]
+
+    # Генерація біграм для фіксації контекстних зв'язків (наприклад, "missile_strike")
+    bi_grams = [" ".join(bg) for bg in ngrams(filtered, 2)]
+
+    return filtered, bi_grams
 
 
-prepare_nltk()
+# 2. Завантаження та обробка даних
+df = pd.read_csv('features_final(1).csv')
 
+# Створюємо єдине текстове поле, поєднуючи експертну аналітику та обговорення спільноти
+df['total_text_context'] = df['isw_text'].fillna('') + " " + df['reddit_text'].fillna('')
 
-def auto_tokenize_dataframe(file_path):
-    print(f"Читання файлу: {file_path}")
-    df = pd.read_csv(file_path)
+print(" Запуск токенізації об'єднаного контексту...")
 
-    # Знаходимо текстові стовпці, АЛЕ ігноруємо ті, що містять 'date' або 'id'
-    # Це допоможе уникнути помилок на стовпці 'date'
-    text_cols = [col for col in df.select_dtypes(include=['object']).columns
-                 if 'date' not in col.lower() and 'id' not in col.lower()]
+# Застосовуємо логіку обробки
+results = df['total_text_context'].apply(tokenize_content)
 
-    print(f"Буде оброблено текстові стовпці: {text_cols}")
+df['unigrams'] = results.apply(lambda x: x[0])
+df['bigrams'] = results.apply(lambda x: x[1])
 
-    stop_words = set(stopwords.words('english'))
+# 3. Формування фінального набору ознак (Features)
+# Залишаємо дату, погодні показники, цільову змінну та згенеровані токени
+cols_to_keep = [
+    'date',
+    'target_alarm_next_day',
+    'day_temp',
+    'day_humidity',
+    'day_conditions',
+    'unigrams',
+    'bigrams'
+]
 
-    def process_text(text):
-        if not isinstance(text, str) or text.strip() == "":
-            return None, None
+# Зберігаємо результат для подальшого навчання моделі
+df[cols_to_keep].to_csv('tokenizer_data.csv', index=False, encoding='utf-8-sig')
 
-        # Очищення від символів (тільки англійські літери)
-        text = re.sub(r'[^a-zA-Z\s]', '', text.lower())
-        tokens = word_tokenize(text)
-
-        # Видалення стоп-слів (Task 5.3)
-        filtered = [w for w in tokens if w not in stop_words and len(w) > 1]
-
-        # Створення біграм (Task 5.3)
-        bg = [" ".join(pair) for pair in ngrams(filtered, 2)]
-
-        return filtered, bg
-
-    for col in text_cols:
-        print(f"Токенізація стовпця: {col}...")
-        results = df[col].fillna('').apply(process_text)
-
-        df[f'{col}_unigrams'] = results.apply(lambda x: x[0] if x else [])
-        df[f'{col}_bigrams'] = results.apply(lambda x: x[1] if x else [])
-
-    return df
-
-
-if __name__ == "__main__":
-    input_file = "merged_data.csv"
-    final_df = auto_tokenize_dataframe(input_file)
-
-    output_name = "tokenized_data.csv"
-    final_df.to_csv(output_name, index=False)
-    print(f"\nГотово! Результат у файлі: {output_name}")
+print(f" Обробку завершено.")
