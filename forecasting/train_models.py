@@ -32,23 +32,6 @@ def train_and_evaluate():
 
     tscv = TimeSeriesSplit(n_splits=5)
 
-    models_config = {
-        # "RandomForest": {
-        #     "model": RandomForestClassifier(random_state=42),
-        #     "params": {
-        #         'n_estimators': [100, 200],
-        #         'max_depth': [10, 20, None],
-        #         'min_samples_split': [2, 5]
-        #     }
-        # },
-        # "XGBoost": {
-        #     "model": XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42),
-        #     "params": {
-        #         'n_estimators': [100],
-        #         'learning_rate': [0.01, 0.1],
-        #         'max_depth': [3, 6]
-        #     }
-        # },
         "DecisionTreeBalanced": {
             "model": DecisionTreeClassifier(random_state=42),
             "params": {
