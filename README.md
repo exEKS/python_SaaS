@@ -82,14 +82,17 @@ warwatch/
 │   └── data_storage.py         # Handles data persistence
 │
 ├── forecasting/
-│   ├── preprocessing.py        # Feature engineering & text preprocessing
-│   ├── feature_engineering.py  # Lag features, rolling stats, TF-IDF
-│   └── model.py                # Model training (RF, XGBoost) & prediction
+│   ├── preprocessing.py        # Feature engineering & text preprocessing (planned)
+│   ├── feature_engineering.py    # Lag features, rolling stats, TF-IDF
+│   ├── default_feature_row.py    # Default feature template for API / demos
+│   ├── model_runtime.py          # Load .pkl, align features, predict
+│   ├── prediction_service.py     # Region/date → alarm / explosion / artillery probabilities
+│   └── inference_catboost.py     # CLI: run all models in the model folder
 │
 ├── frontend/
 │   ├── app.py                  # Streamlit UI
 │   └── api/
-│       └── main.py             # FastAPI backend
+│       └── main.py             # FastAPI backend (`/predict`, `/health`, `/models`)
 │
 ├── data/
 │   ├── raw/                    # Raw scraped/downloaded data
@@ -157,13 +160,22 @@ cp .env.example .env
 
 ##  Running the Application
 
-```bash
-# Start FastAPI backend
-uvicorn frontend.api.main:app --reload
+From the repository root (with `pip install -r requirements.txt` and optional `.env` from `.env.example`):
 
-# Start Streamlit UI
+```bash
+# Start FastAPI backend (REST API for predictions)
+uvicorn frontend.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# In another terminal — Streamlit UI (calls the API; set WARWATCH_API_URL if not localhost:8000)
 streamlit run frontend/app.py
 
+# Optional: batch inference over all .pkl in the model folder
+python forecasting/inference_catboost.py
+```
+
+Put trained `.pkl` files under `models/` or set `WARWATCH_MODEL_DIR` to your Drive/Colab folder. The API exposes `GET /predict?region=Kyiv&date=2024-06-01` returning `alarm_prob`, `explosion_prob`, `artillery_prob` (see `forecasting/prediction_service.py`).
+
+```bash
 # Run ISW scraper
 python data_receiver/isw_scraper.py
 
@@ -175,9 +187,16 @@ python data_receiver/weather_forecast.py
 
 ##  Environment Variables
 
+Copy `.env.example` to `.env` and adjust.
+
 ```
 VISUALCROSSING_API_KEY=your_key_here
 UKRAINE_ALARM_TOKEN=your_token_here
+WARWATCH_MODEL_DIR=          # optional: folder with .pkl models (defaults to models/ or forecasting/ if .pkl present)
+WARWATCH_API_URL=http://127.0.0.1:8000   # Streamlit → FastAPI base URL
+WARWATCH_MODEL_ALARM=        # optional: explicit path to alarm-focused .pkl
+WARWATCH_MODEL_EXPLOSION=
+WARWATCH_MODEL_ARTILLERY=
 ```
 
 ---
