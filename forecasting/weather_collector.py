@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 # --- НАЛАШТУВАННЯ ---
+api_key = os.getenv("WEATHER_API")
 API_KEY = "A7QPDSSGWS3E44DYUR6MQEVDU"
 OUTPUT_FILE = "weather_history.json"
 

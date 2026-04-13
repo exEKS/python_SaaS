@@ -79,5 +79,5 @@ print(f"Обидва графіки збережено у файл: '{combined_p
 with open("catboost_model_new.pkl", "wb") as f:
     pickle.dump(model, f)
 
-print("\n Звіт про класифікацію ")
+print("\n Звіт про класифікацію")
 print(classification_report(y_test, y_pred))

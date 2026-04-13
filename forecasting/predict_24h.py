@@ -97,7 +97,7 @@ def run_prediction():
         "last_prediction_time": current_time,
         "regions_forecast": regions_forecast
     }
-
+        
     try:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             json.dump(final_output, f, indent=4, ensure_ascii=False)
