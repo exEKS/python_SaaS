@@ -1,109 +1,159 @@
 import json
-import pickle
+import joblib
 import pandas as pd
+import numpy as np
 from datetime import datetime
+import os
 
 # --- НАЛАШТУВАННЯ ---
-MODEL_PATH = "catboost_model_new.pkl"
+MODEL_PATH = "model_randomforest.pkl"
 WEATHER_DATA_FILE = "weather_history.json"
 OUTPUT_FILE = "predictions.json"
 
+# Мапінг: міста -> назви регіонів у моделі
+CITY_TO_REGION = {
+    "Lutsk": "Volyn",
+    "Dnipro": "Dnipropetrovsk",
+    "Uzhhorod": "Zakarpattia",
+    "Kropyvnytskyi": "Kirovohrad",
+    "Simferopol": "Crimea"
+}
+
+# ПОВНИЙ СПИСОК 57 ОЗНАК (у правильному порядку для моделі)
+MANUAL_FEATURES = [
+    'day_temp', 'day_humidity', 'day_wind_speed', 'day_precip', 'day_pressure',
+    'day_wind_dir', 'day_cloud_cover', 'hour', 'day_of_year', 'day_of_week',
+    'is_weekend', 'is_holiday',
+    'region_Cherkasy', 'region_Chernihiv', 'region_Chernivtsi', 'region_Crimea',
+    'region_Dnipropetrovsk', 'region_Donetsk', 'region_Ivano-Frankivsk',
+    'region_Kharkiv', 'region_Kherson', 'region_Khmelnytskyi', 'region_Kyiv',
+    'region_Kirovohrad', 'region_Luhansk', 'region_Lviv', 'region_Mykolaiv',
+    'region_Odesa', 'region_Poltava', 'region_Rivne', 'region_Sumy',
+    'region_Ternopil', 'region_Vinnytsia', 'region_Volyn', 'region_Zakarpattia',
+    'region_Zaporizhzhia', 'region_Zhytomyr',
+    'day_temp_10_day_avg', 'day_temp_10_day_max', 'day_temp_10_day_min', 'day_temp_10_day_std',
+    'day_humidity_10_day_avg', 'day_humidity_10_day_max', 'day_humidity_10_day_min', 'day_humidity_10_day_std',
+    'day_wind_speed_10_day_avg', 'day_wind_speed_10_day_max', 'day_wind_speed_10_day_min', 'day_wind_speed_10_day_std',
+    'day_pressure_10_day_avg', 'day_pressure_10_day_max', 'day_pressure_10_day_min', 'day_pressure_10_day_std',
+    'day_cloud_cover_10_day_avg', 'day_cloud_cover_10_day_max', 'day_cloud_cover_10_day_min',
+    'day_cloud_cover_10_day_std'
+]
+
+
+def calculate_rolling_stats(history, city, current_data):
+    """Витягує дані за 10 днів з історії та рахує середнє/std"""
+    keys_map = {
+        'temp': 'temp',
+        'humidity': 'humidity',
+        'wind_speed': 'windspeed',
+        'pressure': 'sealevelpressure',
+        'cloud_cover': 'cloudcover'
+    }
+    stats_results = {}
+
+    # Сортуємо дати, щоб взяти останні 10 днів
+    all_dates = sorted(history.keys())
+
+    for feat_name, api_key in keys_map.items():
+        vals = []
+        for d in all_dates:
+            v = history[d]['regions'].get(city, {}).get(api_key)
+            if v is not None:
+                vals.append(float(v))
+
+        # Додаємо поточне значення до списку для розрахунку
+        current_val = float(current_data.get(api_key, 0))
+        vals.append(current_val)
+
+        # Беремо останні 10 доступних точок
+        recent = vals[-10:]
+
+        stats_results[f'day_{feat_name}_10_day_avg'] = np.mean(recent)
+        stats_results[f'day_{feat_name}_10_day_std'] = np.std(recent)
+        stats_results[f'day_{feat_name}_10_day_max'] = np.max(recent)
+        stats_results[f'day_{feat_name}_10_day_min'] = np.min(recent)
+
+    return stats_results
+
 
 def run_prediction():
-    # 1. ЗАВАНТАЖЕННЯ МОДЕЛІ
-    print("Завантаження моделі...")
-    try:
-        with open(MODEL_PATH, 'rb') as f:
-            model = pickle.load(f)
-        # Отримуємо назви фіч, на яких вчилася модель
-        model_features = model.feature_names_
-    except Exception as e:
-        print(f"Помилка завантаження моделі: {e}")
+    print("Завантаження моделі RandomForest...")
+    if not os.path.exists(MODEL_PATH):
+        print(f"Файл моделі {MODEL_PATH} не знайдено!")
         return
 
-    # 2. ЧИТАННЯ ІСТОРІЇ ПОГОДИ
-    print(f"📂 Пошук останніх даних у {WEATHER_DATA_FILE}...")
-    try:
-        with open(WEATHER_DATA_FILE, 'r', encoding='utf-8') as f:
-            history = json.load(f)
+    model = joblib.load(MODEL_PATH)
 
-        if not history:
-            print("❌ Файл історії порожній.")
-            return
-
-        # Беремо останню доступну дату
-        dates = sorted(history.keys())
-        latest_date = dates[-1]
-        weather_data = history[latest_date]['regions']
-        print(f"✅ Використовуємо дані за: {latest_date}")
-    except Exception as e:
-        print(f"❌ Помилка читаться файлів: {e}")
+    if not os.path.exists(WEATHER_DATA_FILE):
+        print(f"Файл історії {WEATHER_DATA_FILE} не знайдено!")
         return
+
+    with open(WEATHER_DATA_FILE, 'r', encoding='utf-8') as f:
+        history = json.load(f)
+
+    # Визначаємо останню дату в історії для поточного прогнозу
+    latest_date = sorted(history.keys())[-1]
+    weather_data = history[latest_date]['regions']
 
     regions_forecast = {}
-    current_time = datetime.now().isoformat() + "Z"
+    current_time = datetime.now()
 
-    # 3. ГЕНЕРАЦІЯ ПРОГНОЗІВ
-    print("🔮 Розрахунок прогнозів для регіонів...")
+    print(f"Розрахунок для {len(weather_data)} міст за дату {latest_date}...")
+
     for city, data in weather_data.items():
-        # Створюємо порожній рядок з правильними назвами колонок
-        input_df = pd.DataFrame(index=[0], columns=model_features)
+        # Створюємо вхідний вектор (57 колонок нулів)
+        input_df = pd.DataFrame(0.0, index=[0], columns=MANUAL_FEATURES)
 
-        # --- ВИПРАВЛЕННЯ ТИПІВ ДАНИХ ---
+        # 1. Заповнюємо поточні показники
+        input_df['day_temp'] = float(data.get('temp', 0))
+        input_df['day_humidity'] = float(data.get('humidity', 0))
+        input_df['day_wind_speed'] = float(data.get('windspeed', 0))
+        input_df['day_precip'] = float(data.get('precip', 0))
+        input_df['day_wind_dir'] = float(data.get('winddir', 0))
+        input_df['day_pressure'] = float(data.get('sealevelpressure', 1013))
+        input_df['day_cloud_cover'] = float(data.get('cloudcover', 0))
 
-        # 1. Текстові колонки (ОБОВ'ЯЗКОВО мають бути рядками)
-        text_cols = ['unigrams', 'bigrams']
-        for col in text_cols:
-            if col in input_df.columns:
-                input_df[col] = ""  # Поки порожньо, але тип — string
+        # 2. Розрахунок реальної статистики за 10 днів
+        stats = calculate_rolling_stats(history, city, data)
+        for stat_col, val in stats.items():
+            if stat_col in input_df.columns:
+                input_df[stat_col] = val
 
-        # 2. Категоріальна колонка
-        if 'day_conditions' in input_df.columns:
-            input_df['day_conditions'] = str(data.get('conditions', 'N/A'))
+        # 3. Часові ознаки
+        input_df['hour'] = current_time.hour
+        input_df['day_of_year'] = current_time.timetuple().tm_yday
+        input_df['day_of_week'] = current_time.weekday()
+        input_df['is_weekend'] = 1.0 if current_time.weekday() >= 5 else 0.0
 
-        # 3. Числові колонки
-        # Заповнюємо дані з JSON, якщо вони там є, інакше ставимо 0
-        mapping = {
-            'day_temp': data.get('temp'),
-            'day_humidity': data.get('humidity'),
-            'temp_change': 0.0,  # Ці дані з'являться пізніше в історії
-            'humidity_yesterday': 0.0,  # Ці дані з'являться пізніше в історії
-            'text_intensity_index': 0  # Це додасться після скрапера новин
-        }
+        # 4. Регіон
+        region_name = CITY_TO_REGION.get(city, city)
+        region_col = f"region_{region_name}"
+        if region_col in input_df.columns:
+            input_df[region_col] = 1.0
 
-        for col, value in mapping.items():
-            if col in input_df.columns:
-                input_df[col] = float(value) if value is not None else 0.0
+        # 5. Прогноз
+        probabilities = model.predict_proba(input_df.values)[0]
+        prob_true = probabilities[1]
 
-        # --- САМ ПРОГНОЗ ---
-        try:
-            # Отримуємо прогноз (0 або 1)
-            prediction = model.predict(input_df)[0]
+        # ПОРІГ 0.58
+        threshold = 0.58
+        prediction = prob_true > threshold
 
-            # Якщо модель видає ймовірності, можна додати поріг:
-            # prob = model.predict_proba(input_df)[0][1]
-            # prediction = 1 if prob > 0.3 else 0
+        print(f"📍 {city:15} | Prob: {prob_true:.2f} | Alert: {str(prediction).upper()}")
 
-            # Формуємо структуру на 24 години
-            hourly_forecast = {f"{h:02d}:00": bool(prediction) for h in range(24)}
-            regions_forecast[city] = hourly_forecast
+        # Структура для фронтенду
+        regions_forecast[city] = {f"{h:02d}:00": bool(prediction) for h in range(24)}
 
-        except Exception as e:
-            print(f"⚠️ Помилка прогнозу для {city}: {e}")
-
-    # 4. ЗБЕРЕЖЕННЯ РЕЗУЛЬТАТУ
+    # 6. Збереження результатів
     final_output = {
-        "last_model_train_time": "2026-04-13T21:00:00Z",
-        "last_prediction_time": current_time,
+        "last_prediction_time": current_time.isoformat() + "Z",
         "regions_forecast": regions_forecast
     }
-        
-    try:
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(final_output, f, indent=4, ensure_ascii=False)
-        print(f"🚀 Прогнози успішно оновлено! Файл: {OUTPUT_FILE}")
-    except Exception as e:
-        print(f"❌ Помилка запису JSON: {e}")
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_output, f, indent=4, ensure_ascii=False)
+
+    print(f"🚀 Прогнози успішно збережено у {OUTPUT_FILE}!")
 
 
 if __name__ == "__main__":

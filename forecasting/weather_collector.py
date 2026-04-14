@@ -2,10 +2,12 @@ import requests
 import json
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-# --- НАЛАШТУВАННЯ ---
-api_key = os.getenv("WEATHER_API")
-API_KEY = "A7QPDSSGWS3E44DYUR6MQEVDU"
+# Завантажуємо змінні з файлу .env у оточення
+load_dotenv()
+
+API_KEY = os.getenv("WEATHER_API")
 OUTPUT_FILE = "weather_history.json"
 
 REGIONS = [
