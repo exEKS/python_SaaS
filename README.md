@@ -21,7 +21,7 @@
 | Resource | URL |
 |----------|-----|
 | GitHub Repo | https://github.com/exEKS/python_SaaS.git |
-| Google Drive | https://drive.google.com/drive/folders/1ZVW1njMU2iy5T0t2-2ByaOsN6rpm6I72?usp=share_link |
+| Google Drive | https://drive.google.com/drive/folders/1JGf5MwedCwO2nMSBkIvQyJGPQQ08rK17?usp%20=drive_link |
 
 ---
 
@@ -205,10 +205,8 @@ WARWATCH_MODEL_ARTILLERY=
 
 | Team Member | Tasks Completed |
 |-------------|----------------|
-| Kovalov Evgen | README.md, System architecture diagram, Module descriptions & I/O diagrams, Data analysis plan & text preparation strategy, Final PDF report compilation, Code Review |
-| Tavlui Sofia | *(to be filled)* |
-| Snikhovska Vladyslava | *(to be filled)* |
-| Polyakov Kirilo | *(to be filled)* |
-| Barabanova Sofia | *(to be filled)* |
-
->  Screenshots of collected data, Postman API responses (VisualCrossing and Alarms API), and final GitHub / Google Drive links must be inserted by the responsible members before the **06/03/2026** deadline.
+| Kovalov Evgen | Developed an inference script, deployed the model as a SaaS (UI + API), implemented prediction storage and retrieval, set up retraining, recorded a demo video, and prepared a report, frontend, backend. |
+| Tavlui Sofia | Defined the top model, wrote the motivation for each model, retrained the top model, made an API endpoint for 24-hour predictions, created capability (script) to retrain the model with the historical dataset + new data on a regular basis + model validation. |
+| Snikhovska Vladyslava | Trained and develoved RandomForest model, implemented endpoint to update forecast, README file editing, final report preparation, full final presentation, recorded a demo video. |
+| Polyakov Kirilo | Trained/tuned CatBoost models, automated 24h regional forecasting via hourly Cron on AWS EC2, and implemented a retraining pipeline with automated validation. |
+| Barabanova Sofia | Decision Tree model development and hyperparameter tuning, evaluation metrics & confusion matrix analysis, feature importance visualization (Top-20), and model improvement strategy (TODO list). |
