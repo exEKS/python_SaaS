@@ -44,6 +44,6 @@ data/*.json
 models/*.pt
 models/*.pth
 models/*.pkl
-
+forecasting/*.pkl
 # Node (якщо frontend)
 node_modules/

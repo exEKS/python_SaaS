@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import pickle
 from pathlib import Path
 
@@ -69,12 +70,24 @@ def _feature_column_names(estimator) -> list[str] | None:
     return None
 
 
-def align_to_estimator(estimator, raw: pd.DataFrame, silent: bool = True) -> pd.DataFrame:
+def align_to_estimator(
+    estimator,
+    raw: pd.DataFrame,
+    silent: bool = True,
+    model_path: Path | None = None,
+) -> pd.DataFrame:
     names = _feature_column_names(estimator)
+    if not names and model_path is not None:
+        sidecar = model_path.parent / f"{model_path.name}.features.json"
+        if sidecar.is_file():
+            raw_list = json.loads(sidecar.read_text(encoding="utf-8"))
+            if isinstance(raw_list, list) and len(raw_list) > 0:
+                names = [str(x) for x in raw_list]
     if not names:
         raise RuntimeError(
             "Model has no feature_names_ / feature_names_in_. "
-            "Train with a pandas DataFrame so names are stored in the pickle."
+            "Train with a pandas DataFrame so names are stored in the pickle, "
+            "or add a sidecar {model}.pkl.features.json with a JSON array of column names."
         )
     out = raw.reindex(columns=names, fill_value=0.0)
     if not silent:
@@ -85,6 +98,18 @@ def align_to_estimator(estimator, raw: pd.DataFrame, silent: bool = True) -> pd.
         if extra:
             print(f"  Note: {len(extra)} extra column(s) ignored.")
     return out.astype(np.float64)
+
+
+def binary_proba_vector(estimator, X: pd.DataFrame) -> tuple[float, float] | None:
+    if not hasattr(estimator, "predict_proba"):
+        return None
+    try:
+        p = estimator.predict_proba(X)
+        if p.ndim == 2 and p.shape[1] == 2:
+            return float(p[0, 0]), float(p[0, 1])
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return None
 
 
 def predict_proba_positive_or_score(estimator, X: pd.DataFrame) -> tuple[float, str]:

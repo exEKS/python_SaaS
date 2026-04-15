@@ -173,7 +173,7 @@ streamlit run frontend/app.py
 python forecasting/inference_catboost.py
 ```
 
-Put trained `.pkl` files under `models/` or set `WARWATCH_MODEL_DIR` to your Drive/Colab folder. The API exposes `GET /predict?region=Kyiv&date=2024-06-01` returning `alarm_prob`, `explosion_prob`, `artillery_prob` (see `forecasting/prediction_service.py`).
+Put trained `.pkl` files under `models/` or set `WARWATCH_MODEL_DIR` to your Drive/Colab folder. The API exposes `GET /predict?region=Kyiv&date=2024-06-01` returning `alarm_prob`, `explosion_prob`, `artillery_prob`. Optional: `&alarm_model=your_model.pkl` (file inside `WARWATCH_MODEL_DIR` / `models/`, or absolute path). Without it, the first matching `.pkl` by name heuristics is used (e.g. names containing `catboost`, `decision`, …). Set `WARWATCH_MODEL_ALARM` in `.env` for a fixed default without query params.
 
 ```bash
 # Run ISW scraper
