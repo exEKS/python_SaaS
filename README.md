@@ -206,7 +206,7 @@ WARWATCH_MODEL_ARTILLERY=
 | Team Member | Tasks Completed |
 |-------------|----------------|
 | Kovalov Evgen | Developed an inference script, deployed the model as a SaaS (UI + API), implemented prediction storage and retrieval, set up retraining, recorded a demo video, and prepared a report, frontend, backend. |
-| Tavlui Sofia | Defined the top model, wrote the motivation for each model, retrained the top model, made an API endpoint for 24-hour predictions, created capability (script) to retrain the model with the historical dataset + new data on a regular basis + model validation. |
+| Tavlui Sofiia | Defined the top model, wrote the motivation for each model, retrained the top model, made an API endpoint for 24-hour predictions, created capability (script) to retrain the model with the historical dataset + new data on a regular basis + model validation. |
 | Snikhovska Vladyslava | Trained and develoved RandomForest model, implemented endpoint to update forecast, README file editing, final report preparation, full final presentation, recorded a demo video. |
-| Polyakov Kirilo | Trained/tuned CatBoost models, automated 24h regional forecasting via hourly Cron on AWS EC2, and implemented a retraining pipeline with automated validation. |
-| Barabanova Sofia | Decision Tree model development and hyperparameter tuning, evaluation metrics & confusion matrix analysis, feature importance visualization (Top-20), and model improvement strategy (TODO list). |
+| Poliakov Kyrylo | Trained/tuned CatBoost models, automated 24h regional forecasting via hourly Cron on AWS EC2, and implemented a retraining pipeline with automated validation. |
+| Barabanova Sofiia | Decision Tree model development and hyperparameter tuning, evaluation metrics & confusion matrix analysis, feature importance visualization (Top-20), and model improvement strategy (TODO list). |
