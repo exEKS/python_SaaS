@@ -139,7 +139,7 @@ def run_prediction():
         threshold = 0.58
         prediction = prob_true > threshold
 
-        print(f"📍 {city:15} | Prob: {prob_true:.2f} | Alert: {str(prediction).upper()}")
+        print(f"{city:15} | Prob: {prob_true:.2f} | Alert: {str(prediction).upper()}")
 
         # Структура для фронтенду
         regions_forecast[city] = {f"{h:02d}:00": bool(prediction) for h in range(24)}
@@ -153,7 +153,7 @@ def run_prediction():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(final_output, f, indent=4, ensure_ascii=False)
 
-    print(f"🚀 Прогнози успішно збережено у {OUTPUT_FILE}!")
+    print(f"Прогнози успішно збережено у {OUTPUT_FILE}!")
 
 
 if __name__ == "__main__":
