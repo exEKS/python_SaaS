@@ -24,7 +24,7 @@ from forecasting.model_runtime import list_model_pickles
 app = FastAPI(
     title="WarWatch Prediction API",
     description=(
-        "Air alarm, explosion, and artillery risk estimates per region and date. "
+        "Air alarm risk estimate per region and date. "
         "Optional feature overrides: any query param listed at "
         "`GET /predict/supported-feature-params` (e.g. feat_day_humidity, "
         "feat_alarm_total_duration_min). Unknown query keys are ignored. "
@@ -77,14 +77,6 @@ def predict(
         None,
         description="Optional: alarm head — file name in model_dir or absolute path to .pkl",
     ),
-    explosion_model: str | None = Query(
-        None,
-        description="Optional: explosion head — same as alarm_model",
-    ),
-    artillery_model: str | None = Query(
-        None,
-        description="Optional: artillery head — same as alarm_model",
-    ),
 ):
     try:
         fo = feature_overrides_from_query_params(request.query_params)
@@ -92,8 +84,6 @@ def predict(
             region,
             date,
             alarm_model=alarm_model,
-            explosion_model=explosion_model,
-            artillery_model=artillery_model,
             feature_overrides=fo,
         )
     except FileNotFoundError as e:

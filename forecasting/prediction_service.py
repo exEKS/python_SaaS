@@ -17,8 +17,6 @@ from forecasting.paths import model_dir
 def _pick_model_path(mdir: Path, kind: str) -> Path | None:
     env_map = {
         "alarm": os.environ.get("WARWATCH_MODEL_ALARM", "").strip(),
-        "explosion": os.environ.get("WARWATCH_MODEL_EXPLOSION", "").strip(),
-        "artillery": os.environ.get("WARWATCH_MODEL_ARTILLERY", "").strip(),
     }
     if env_map.get(kind):
         p = Path(env_map[kind])
@@ -40,8 +38,6 @@ def _pick_model_path(mdir: Path, kind: str) -> Path | None:
             "ridge",
             "decision",
         ),
-        "explosion": ("explosion", "вибух"),
-        "artillery": ("artillery", "артилер"),
     }
     files = sorted(mdir.glob("*.pkl"))
     for token in patterns.get(kind, ()):
@@ -93,8 +89,6 @@ def predict_event_probabilities(
     region: str,
     date_iso: str,
     alarm_model: str | None = None,
-    explosion_model: str | None = None,
-    artillery_model: str | None = None,
     feature_overrides: dict[str, float] | None = None,
 ) -> dict:
     mdir = model_dir()
@@ -112,14 +106,6 @@ def predict_event_probabilities(
             f"No .pkl models in {mdir}. Add models under models/ or set WARWATCH_MODEL_DIR."
         )
 
-    pe = _resolve_model_override(mdir, explosion_model, "explosion_model")
-    if pe is None:
-        pe = _pick_model_path(mdir, "explosion")
-
-    part = _resolve_model_override(mdir, artillery_model, "artillery_model")
-    if part is None:
-        part = _pick_model_path(mdir, "artillery")
-
     alarm_p, _, alarm_cls, alarm_pair = _run_model(pa, df)
     models_used = {"alarm": f"{pa.name} ({alarm_cls})"}
     proba_detail: dict = {}
@@ -130,58 +116,11 @@ def predict_event_probabilities(
     if alarm_pair is not None:
         proba_detail["alarm"] = _split(alarm_pair)
 
-    explosion_pair = None
-    if pe is not None and pe.resolve() != pa.resolve():
-        explosion_p, _, ec, explosion_pair = _run_model(pe, df)
-        models_used["explosion"] = f"{pe.name} ({ec})"
-        if explosion_pair is not None:
-            proba_detail["explosion"] = _split(explosion_pair)
-    else:
-        explosion_p = alarm_p
-        models_used["explosion"] = f"same_as_alarm (from {pa.name})"
-        if alarm_pair is not None:
-            proba_detail["explosion"] = {**_split(alarm_pair), "shared_with": "alarm"}
-
-    if part is None or part.resolve() == pa.resolve():
-        artillery_p = alarm_p
-        models_used["artillery"] = f"same_as_alarm (from {pa.name})"
-        if alarm_pair is not None:
-            proba_detail["artillery"] = {**_split(alarm_pair), "shared_with": "alarm"}
-    elif pe and part.resolve() == pe.resolve():
-        artillery_p = explosion_p
-        models_used["artillery"] = models_used["explosion"]
-        if explosion_pair is not None:
-            proba_detail["artillery"] = {**_split(explosion_pair), "shared_with": "explosion"}
-        elif alarm_pair is not None:
-            proba_detail["artillery"] = {**_split(alarm_pair), "shared_with": "alarm"}
-    else:
-        artillery_p, _, ac, ar_pair = _run_model(part, df)
-        models_used["artillery"] = f"{part.name} ({ac})"
-        if ar_pair is not None:
-            proba_detail["artillery"] = _split(ar_pair)
-
-    unique_paths = {pa.resolve()}
-    if pe and pe.resolve() != pa.resolve():
-        unique_paths.add(pe.resolve())
-    if part:
-        pr, par = part.resolve(), pa.resolve()
-        per = pe.resolve() if pe else None
-        if pr != par and (per is None or pr != per):
-            unique_paths.add(pr)
-    if len(unique_paths) == 1:
-        mode = "single_model"
-    elif len(unique_paths) == 2:
-        mode = "two_models"
-    else:
-        mode = "three_models"
-
     out = {
         "region": region.strip(),
         "date": date_iso,
         "alarm_prob": round(alarm_p, 6),
-        "explosion_prob": round(explosion_p, 6),
-        "artillery_prob": round(artillery_p, 6),
-        "mode": mode,
+        "mode": "single_model",
         "models": models_used,
         "model_dir": str(mdir.resolve()),
         "feature_profile": feature_profile,
