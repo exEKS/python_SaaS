@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import os
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
