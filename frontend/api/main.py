@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import sys
+import os
+import json
 from pathlib import Path
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -42,6 +46,55 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+
+PREDICTIONS_FILE = "predictions.json"
+MODEL_META_FILE = "model_randomforest_v2.json"
+LOG_FILE = "api_request_logs.json"
+
+class ForecastRequest(BaseModel):
+    region: str = "all"
+
+def _load_json(path: str):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+def _save_log(data: dict):
+    logs = []
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            try:
+                logs = json.load(f)
+            except json.JSONDecodeError:
+                logs = []
+
+    logs.append(data)
+    with open(LOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(logs, f, indent=4, ensure_ascii=False)
+
+def _get_predictions() -> dict:
+    data = _load_json(PREDICTIONS_FILE)
+    if data and "regions_forecast" in data:
+        return data["regions_forecast"]
+    return {}
+
+def _get_meta() -> dict:
+    meta = _load_json(MODEL_META_FILE) or {}
+    return {
+        "last_model_train_time": meta.get(
+            "last_model_train_time", "2025-01-01T00:00:00Z"
+        ),
+        "last_prediction_time": meta.get(
+            "last_prediction_time",
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ),
+        "model_name": meta.get("model_name", "RandomForest"),
+        "model_version": meta.get("model_version", "v2"),
+    }
 
 
 @app.get("/health")
@@ -94,3 +147,41 @@ def predict(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/forecast")
+def forecast(body: ForecastRequest):
+    region = body.region
+
+    all_predictions = _get_predictions()
+    meta = _get_meta()
+
+    if region and region.lower() != "all":
+        matched = next(
+            (r for r in all_predictions if r.lower() == region.lower()), None
+        )
+        if matched is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": f"Region '{region}' not found.",
+                    "available_regions": list(all_predictions.keys())
+                }
+            )
+        regions_forecast = {matched: all_predictions[matched]}
+    else:
+        regions_forecast = all_predictions
+
+    response = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "last_model_train_time": meta["last_model_train_time"],
+        "last_prediction_time": meta["last_prediction_time"],
+        "model_name": meta["model_name"],
+        "model_version": meta["model_version"],
+        "requested_region": region,
+        "regions_forecast": regions_forecast,
+    }
+
+    _save_log(response)
+
+    return response
