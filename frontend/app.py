@@ -33,7 +33,6 @@ def _fetch_model_files(api_url: str) -> list[str]:
 
 st.set_page_config(page_title="WarWatch", layout="centered")
 st.title("WarWatch")
-st.caption("Показує лише ймовірність тривоги (`alarm_prob`).")
 
 api_url = os.environ.get("WARWATCH_API_URL", "http://127.0.0.1:8000").rstrip("/")
 
