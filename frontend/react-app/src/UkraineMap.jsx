@@ -6,7 +6,7 @@ const STROKE_DEFAULT  = 'rgba(13,17,23,0.7)'
 const STROKE_HOVER    = '#58a6ff'
 const STROKE_SELECTED = '#e6edf3'
 
-export default function UkraineMap({ data, selected, onSelect }) {
+export default function UkraineMap({ data, loadingById = {}, selected, onSelect }) {
   const svgRef = useRef(null)
   const [hovered, setHovered]   = useState(null)
   const [tooltip, setTooltip]   = useState(null) // { x, y, id }
@@ -24,6 +24,7 @@ export default function UkraineMap({ data, selected, onSelect }) {
   }
 
   const prob   = tooltip ? data[tooltip.id] : undefined
+  const isLoading = tooltip ? !!loadingById[tooltip.id] : false
   const region = tooltip ? REGIONS[tooltip.id] : null
 
   return (
@@ -36,7 +37,7 @@ export default function UkraineMap({ data, selected, onSelect }) {
       >
         {Object.entries(REGIONS).map(([id, r]) => {
           const p        = data[id]
-          const fill     = r.occupied ? '#1c2333' : probToColor(p)
+          const fill     = r.occupied ? '#1c2333' : loadingById[id] ? '#1f6feb' : probToColor(p)
           const isHov    = hovered   === id
           const isSel    = selected  === id
           const stroke   = isSel ? STROKE_SELECTED : isHov ? STROKE_HOVER : STROKE_DEFAULT
@@ -68,15 +69,16 @@ export default function UkraineMap({ data, selected, onSelect }) {
           y={tooltip.y}
           name={region.ukName}
           prob={prob}
+          isLoading={isLoading}
         />
       )}
     </div>
   )
 }
 
-function Tooltip({ x, y, name, prob }) {
+function Tooltip({ x, y, name, prob, isLoading }) {
   const color = probToColor(prob)
-  const pct   = prob !== null && prob !== undefined ? `${Math.round(prob * 100)}%` : '—'
+  const pct   = isLoading ? '…' : prob !== null && prob !== undefined ? `${Math.round(prob * 100)}%` : '—'
   return (
     <div style={{
       position:      'absolute',
@@ -92,7 +94,9 @@ function Tooltip({ x, y, name, prob }) {
     }}>
       <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 2 }}>{name}</div>
       <div style={{ fontSize: 22, fontWeight: 500, color, lineHeight: 1 }}>{pct}</div>
-      <div style={{ fontSize: 11, color: '#6e7681', marginTop: 2 }}>ймовірність тривоги</div>
+      <div style={{ fontSize: 11, color: '#6e7681', marginTop: 2 }}>
+        {isLoading ? 'завантаження…' : 'ймовірність тривоги'}
+      </div>
       {prob !== null && prob !== undefined && (
         <div style={{ marginTop: 6, height: 3, borderRadius: 2, background: '#30363d' }}>
           <div style={{

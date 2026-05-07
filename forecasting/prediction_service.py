@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from threading import Lock
 
 from forecasting.default_feature_row import feature_dataframe_one_row
 from forecasting.model_runtime import (
@@ -12,6 +13,9 @@ from forecasting.model_runtime import (
     unwrap_estimator,
 )
 from forecasting.paths import model_dir
+
+_MODEL_CACHE: dict[Path, object] = {}
+_MODEL_CACHE_LOCK = Lock()
 
 
 def _pick_model_path(mdir: Path, kind: str) -> Path | None:
@@ -60,12 +64,24 @@ def _default_primary(mdir: Path) -> Path | None:
 
 
 def _run_model(path: Path, df):
-    raw = load_pickled_estimator(path)
+    raw = _load_model_cached(path)
     est = unwrap_estimator(raw)
     X = align_to_estimator(est, df, silent=True, model_path=path)
     score, kind = predict_proba_positive_or_score(est, X)
     pair = binary_proba_vector(est, X)
     return float(score), kind, type(est).__name__, pair
+
+
+def _load_model_cached(path: Path):
+    resolved = path.resolve()
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(resolved)
+        if cached is not None:
+            return cached
+    loaded = load_pickled_estimator(resolved)
+    with _MODEL_CACHE_LOCK:
+        _MODEL_CACHE[resolved] = loaded
+    return loaded
 
 
 def _resolve_model_override(mdir: Path, model_arg: str | None, label: str) -> Path | None:
@@ -98,9 +114,7 @@ def predict_event_probabilities(
     df = feature_dataframe_one_row(region, date_iso, overrides=feature_overrides)
     feature_profile = str(df.attrs.get("feature_profile", "neutral"))
 
-    pa = _resolve_model_override(mdir, alarm_model, "alarm_model")
-    if pa is None:
-        pa = _pick_model_path(mdir, "alarm") or _default_primary(mdir)
+    pa = resolve_alarm_model_path(mdir, alarm_model)
     if pa is None:
         raise FileNotFoundError(
             f"No .pkl models in {mdir}. Add models under models/ or set WARWATCH_MODEL_DIR."
@@ -130,3 +144,32 @@ def predict_event_probabilities(
     if proba_detail:
         out["binary_classifier_split"] = proba_detail
     return out
+
+
+def resolve_alarm_model_path(
+    mdir: Path | None = None,
+    alarm_model: str | None = None,
+) -> Path | None:
+    effective_dir = mdir or model_dir()
+    pa = _resolve_model_override(effective_dir, alarm_model, "alarm_model")
+    if pa is not None:
+        return pa
+    return _pick_model_path(effective_dir, "alarm") or _default_primary(effective_dir)
+
+
+def warmup_models(alarm_model: str | None = None) -> dict:
+    mdir = model_dir()
+    if not mdir.is_dir():
+        raise FileNotFoundError(f"Model directory missing: {mdir}")
+    pa = resolve_alarm_model_path(mdir, alarm_model)
+    if pa is None:
+        raise FileNotFoundError(
+            f"No .pkl models in {mdir}. Add models under models/ or set WARWATCH_MODEL_DIR."
+        )
+    raw = _load_model_cached(pa)
+    est = unwrap_estimator(raw)
+    return {
+        "alarm_model": pa.name,
+        "alarm_estimator_class": type(est).__name__,
+        "model_dir": str(mdir.resolve()),
+    }

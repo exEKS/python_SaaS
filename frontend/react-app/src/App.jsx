@@ -10,7 +10,7 @@ export default function App() {
   const [date,    setDate]    = useState(TODAY)
   const [selected, setSelected] = useState(null)
 
-  const { data, loading, status, updatedAt, fetchAll, useDemoData } = useAlarmData()
+  const { data, loadingById, loading, status, updatedAt, fetchAll, useDemoData } = useAlarmData()
 
   function handleFetch() {
     fetchAll(apiBase, date)
@@ -83,7 +83,7 @@ export default function App() {
       </div>
 
       {/* ── Map ── */}
-      <UkraineMap data={data} selected={selected} onSelect={setSelected} />
+      <UkraineMap data={data} loadingById={loadingById} selected={selected} onSelect={setSelected} />
 
       {/* ── Legend ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
@@ -106,7 +106,7 @@ export default function App() {
       </div>
 
       {/* ── Region detail ── */}
-      <RegionDetail id={selected} data={data} onClose={() => setSelected(null)} />
+      <RegionDetail id={selected} data={data} loadingById={loadingById} onClose={() => setSelected(null)} />
 
       {/* ── Status bar ── */}
       {status && (

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import os
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -23,8 +24,19 @@ from forecasting.feature_query_params import (
     supported_feature_query_params,
 )
 from forecasting.paths import model_dir
-from forecasting.prediction_service import predict_event_probabilities
+from forecasting.prediction_service import (
+    predict_event_probabilities,
+    resolve_alarm_model_path,
+    warmup_models,
+)
 from forecasting.model_runtime import list_model_pickles
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Load the main alarm model once on startup to avoid repeated cold loads.
+    warmup_models()
+    yield
 
 app = FastAPI(
     title="WarWatch Prediction API",
@@ -38,6 +50,7 @@ app = FastAPI(
         "missing columns are filled with 0.0."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -57,6 +70,12 @@ LOG_FILE = "api_request_logs.json"
 
 class ForecastRequest(BaseModel):
     region: str = "all"
+
+
+class BatchPredictRequest(BaseModel):
+    regions: list[str] = Field(..., min_length=1)
+    date: str
+    alarm_model: str | None = None
 
 def _load_json(path: str):
     if os.path.exists(path):
@@ -144,6 +163,43 @@ def predict(
             alarm_model=alarm_model,
             feature_overrides=fo,
         )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/predict/batch")
+@app.post("/api/predict/batch")
+def predict_batch(body: BatchPredictRequest):
+    if len(body.regions) > 64:
+        raise HTTPException(status_code=422, detail="Too many regions in one batch (max 64).")
+    try:
+        mdir = model_dir()
+        alarm_path = resolve_alarm_model_path(mdir, body.alarm_model)
+        if alarm_path is None:
+            raise FileNotFoundError(
+                f"No .pkl models in {mdir}. Add models under models/ or set WARWATCH_MODEL_DIR."
+            )
+
+        items = []
+        for region in body.regions:
+            items.append(
+                predict_event_probabilities(
+                    region=region,
+                    date_iso=body.date,
+                    alarm_model=str(alarm_path),
+                )
+            )
+        return {
+            "date": body.date,
+            "count": len(items),
+            "items": items,
+        }
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:

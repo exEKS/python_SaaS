@@ -1,11 +1,12 @@
 import { REGIONS } from './regions.js'
 import { probToColor, riskInfo, fmtPct } from './colors.js'
 
-export default function RegionDetail({ id, data, onClose }) {
+export default function RegionDetail({ id, data, loadingById = {}, onClose }) {
   if (!id || !REGIONS[id]) return null
 
   const region = REGIONS[id]
   const prob   = data[id]
+  const isLoading = !!loadingById[id]
   const color  = probToColor(prob)
   const ri     = riskInfo(prob)
 
@@ -25,7 +26,7 @@ export default function RegionDetail({ id, data, onClose }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span style={{ fontSize: 36, fontWeight: 500, color, lineHeight: 1 }}>
-              {fmtPct(prob)}
+              {isLoading ? '…' : fmtPct(prob)}
             </span>
             <div>
               <span style={{
@@ -37,7 +38,7 @@ export default function RegionDetail({ id, data, onClose }) {
                 background:   ri.bg,
                 color:        ri.color,
               }}>
-                {ri.label}
+                {isLoading ? 'Завантаження' : ri.label}
               </span>
               <div style={{ fontSize: 11, color: '#6e7681', marginTop: 4 }}>
                 ймовірність тривоги · 24 год
