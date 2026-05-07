@@ -5,6 +5,7 @@ from pathlib import Path
 from threading import Lock
 
 from forecasting.default_feature_row import feature_dataframe_one_row
+from forecasting.local_live_features import live_feature_overrides_for_prediction
 from forecasting.model_runtime import (
     align_to_estimator,
     binary_proba_vector,
@@ -128,7 +129,11 @@ def predict_event_probabilities(
     if not mdir.is_dir():
         raise FileNotFoundError(f"Model directory missing: {mdir}")
 
-    df = feature_dataframe_one_row(region, date_iso, overrides=feature_overrides)
+    live_overrides, live_meta = live_feature_overrides_for_prediction(region, date_iso)
+    merged_overrides = {**live_overrides, **(feature_overrides or {})}
+    df = feature_dataframe_one_row(
+        region, date_iso, overrides=merged_overrides or None
+    )
     feature_profile = str(df.attrs.get("feature_profile", "neutral"))
 
     pa = resolve_alarm_model_path(mdir, alarm_model)
@@ -156,8 +161,12 @@ def predict_event_probabilities(
         "model_dir": str(mdir.resolve()),
         "feature_profile": feature_profile,
     }
-    if feature_overrides:
-        out["feature_overrides"] = {k: round(float(v), 6) for k, v in feature_overrides.items()}
+    if merged_overrides:
+        out["feature_overrides"] = {
+            k: round(float(v), 6) for k, v in merged_overrides.items()
+        }
+    if live_meta:
+        out["live_context"] = live_meta
     if proba_detail:
         out["binary_classifier_split"] = proba_detail
     return out

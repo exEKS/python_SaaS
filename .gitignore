@@ -39,6 +39,8 @@ htmlcov/
 data/*.csv
 data/*.xlsx
 data/*.json
+data/local_live/isw/*.json
+data/local_live/alerts/*.json
 
 # Models (якщо великі моделі)
 models/*.pt

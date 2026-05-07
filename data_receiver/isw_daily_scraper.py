@@ -1,17 +1,20 @@
+import sys
+from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 import datetime
 import time
 import json
-import os
 
-OUTPUT_FOLDER = "isw_data"
-SCHEDULED_HOUR = 23
-SCHEDULED_MINUTE = 51
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-if not os.path.exists(OUTPUT_FOLDER):
-    os.makedirs(OUTPUT_FOLDER)
-    print(f"Created new directory: {OUTPUT_FOLDER}")
+from forecasting.local_live_features import isw_dir
+
+SCHEDULED_HOUR = 0
+SCHEDULED_MINUTE = 0
 
 def fetch_daily_report(target_date):
     
@@ -44,7 +47,7 @@ def fetch_daily_report(target_date):
                     full_text = " ".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
                     
                     if full_text:
-                        json_filename = os.path.join(OUTPUT_FOLDER, f"isw_data_{date_str}.json")
+                        json_filename = isw_dir() / f"isw_data_{date_str}.json"
                         
                         daily_data = {
                             "date": date_str,
