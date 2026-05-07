@@ -99,6 +99,7 @@ def _get_meta() -> dict:
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     mdir = model_dir()
     ok = mdir.is_dir() and any(mdir.glob("*.pkl"))
@@ -106,6 +107,7 @@ def health():
 
 
 @app.get("/models")
+@app.get("/api/models")
 def list_models():
     mdir = model_dir()
     if not mdir.is_dir():
@@ -118,11 +120,13 @@ def list_models():
 
 
 @app.get("/predict/supported-feature-params")
+@app.get("/api/predict/supported-feature-params")
 def predict_supported_feature_params():
     return supported_feature_query_params()
 
 
 @app.get("/predict")
+@app.get("/api/predict")
 def predict(
     request: Request,
     region: str = Query(..., description="Region, e.g. Kyiv, Kharkiv, or Київ"),
@@ -151,6 +155,7 @@ def predict(
 
 
 @app.post("/forecast")
+@app.post("/api/forecast")
 def forecast(body: ForecastRequest):
     region = body.region
 
