@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import UkraineMap    from './UkraineMap.jsx'
-import RegionDetail  from './RegionDetail.jsx'
+import HourlyModal   from './HourlyModal.jsx'
 import { useAlarmData } from './useAlarmData.js'
+import { REGIONS } from './regions.js'
 
 const TODAY = new Date().toISOString().split('T')[0]
 
@@ -9,6 +10,9 @@ export default function App() {
   const [apiBase, setApiBase] = useState('/api')   // proxied by Vite → http://127.0.0.1:8000
   const [date,    setDate]    = useState(TODAY)
   const [selected, setSelected] = useState(null)
+  const [hourlyByRegion, setHourlyByRegion] = useState({})
+  const [hourlyLoading, setHourlyLoading] = useState(false)
+  const [hourlyNote, setHourlyNote] = useState('')
 
   const { data, loadingById, loading, status, updatedAt, fetchAll, useDemoData } = useAlarmData()
 
@@ -19,6 +23,38 @@ export default function App() {
   const statusType = status?.type
   const isLive = statusType === 'live'
   const isDemo = statusType === 'demo'
+  const selectedRegion = selected ? REGIONS[selected] : null
+  const hourlyRows = useMemo(() => (selected ? (hourlyByRegion[selected] || []) : []), [hourlyByRegion, selected])
+
+  useEffect(() => {
+    setHourlyByRegion({})
+  }, [date, apiBase])
+
+  useEffect(() => {
+    async function loadHourly() {
+      if (!selected || !selectedRegion?.apiName) return
+      if (hourlyByRegion[selected]) return
+      setHourlyLoading(true)
+      setHourlyNote('')
+      try {
+        const base = apiBase.replace(/\/$/, '')
+        const url = `${base}/predict/hourly?region=${encodeURIComponent(selectedRegion.apiName)}&date=${date}`
+        const res = await fetch(url, { signal: AbortSignal.timeout(25000) })
+        if (!res.ok) throw new Error(`${res.status}`)
+        const json = await res.json()
+        const rows = Array.isArray(json.hourly_alarm_probabilities) ? json.hourly_alarm_probabilities : []
+        setHourlyByRegion(prev => ({ ...prev, [selected]: rows }))
+        if (json.uses_hour_feature === false) {
+          setHourlyNote('Модель не містить hour-ознаки: профіль по годинах рівний.')
+        }
+      } catch {
+        setHourlyNote('Не вдалося завантажити погодинний прогноз.')
+      } finally {
+        setHourlyLoading(false)
+      }
+    }
+    loadHourly()
+  }, [selected, selectedRegion, apiBase, date, hourlyByRegion])
 
   return (
     <div style={{
@@ -105,15 +141,21 @@ export default function App() {
         ))}
       </div>
 
-      {/* ── Region detail ── */}
-      <RegionDetail id={selected} data={data} loadingById={loadingById} onClose={() => setSelected(null)} />
-
       {/* ── Status bar ── */}
       {status && (
         <div style={{ marginTop: 10, fontSize: 11, color: status.type === 'error' ? '#f85149' : '#6e7681' }}>
           {status.text}
         </div>
       )}
+
+      <HourlyModal
+        open={!!selected}
+        regionName={selectedRegion?.ukName || 'Регіон'}
+        hourly={hourlyRows}
+        loading={hourlyLoading}
+        note={hourlyNote}
+        onClose={() => setSelected(null)}
+      />
     </div>
   )
 }

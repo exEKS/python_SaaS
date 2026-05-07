@@ -26,6 +26,7 @@ from forecasting.feature_query_params import (
 from forecasting.paths import model_dir
 from forecasting.prediction_service import (
     predict_event_probabilities,
+    predict_hourly_alarm_profile,
     resolve_alarm_model_path,
     warmup_models,
 )
@@ -160,6 +161,35 @@ def predict(
         return predict_event_probabilities(
             region,
             date,
+            alarm_model=alarm_model,
+            feature_overrides=fo,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/predict/hourly")
+@app.get("/api/predict/hourly")
+def predict_hourly(
+    request: Request,
+    region: str = Query(..., description="Region, e.g. Kyiv, Kharkiv, or Київ"),
+    date: str = Query(..., description="Date as YYYY-MM-DD"),
+    alarm_model: str | None = Query(
+        None,
+        description="Optional: alarm head — file name in model_dir or absolute path to .pkl",
+    ),
+):
+    try:
+        fo = feature_overrides_from_query_params(request.query_params)
+        return predict_hourly_alarm_profile(
+            region=region,
+            date_iso=date,
             alarm_model=alarm_model,
             feature_overrides=fo,
         )

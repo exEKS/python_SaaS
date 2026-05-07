@@ -84,6 +84,23 @@ def _load_model_cached(path: Path):
     return loaded
 
 
+def _model_feature_names(estimator, path: Path) -> list[str]:
+    names = getattr(estimator, "feature_names_", None)
+    if names is not None and len(names) > 0:
+        return [str(x) for x in names]
+    names = getattr(estimator, "feature_names_in_", None)
+    if names is not None and len(names) > 0:
+        return [str(x) for x in names]
+    sidecar = path.parent / f"{path.name}.features.json"
+    if sidecar.is_file():
+        import json
+
+        raw = json.loads(sidecar.read_text(encoding="utf-8"))
+        if isinstance(raw, list) and raw:
+            return [str(x) for x in raw]
+    return []
+
+
 def _resolve_model_override(mdir: Path, model_arg: str | None, label: str) -> Path | None:
     if not model_arg or not str(model_arg).strip():
         return None
@@ -172,4 +189,50 @@ def warmup_models(alarm_model: str | None = None) -> dict:
         "alarm_model": pa.name,
         "alarm_estimator_class": type(est).__name__,
         "model_dir": str(mdir.resolve()),
+    }
+
+
+def predict_hourly_alarm_profile(
+    region: str,
+    date_iso: str,
+    alarm_model: str | None = None,
+    feature_overrides: dict[str, float] | None = None,
+) -> dict:
+    mdir = model_dir()
+    if not mdir.is_dir():
+        raise FileNotFoundError(f"Model directory missing: {mdir}")
+    pa = resolve_alarm_model_path(mdir, alarm_model)
+    if pa is None:
+        raise FileNotFoundError(
+            f"No .pkl models in {mdir}. Add models under models/ or set WARWATCH_MODEL_DIR."
+        )
+
+    raw = _load_model_cached(pa)
+    est = unwrap_estimator(raw)
+    model_features = set(_model_feature_names(est, pa))
+    hour_feature = next(
+        (name for name in ("hour", "hour_of_day", "feat_hour") if name in model_features),
+        None,
+    )
+
+    hours: list[dict] = []
+    for h in range(24):
+        effective_overrides = dict(feature_overrides or {})
+        if hour_feature is not None:
+            effective_overrides[hour_feature] = float(h)
+        pred = predict_event_probabilities(
+            region=region,
+            date_iso=date_iso,
+            alarm_model=str(pa),
+            feature_overrides=effective_overrides or None,
+        )
+        hours.append({"hour": h, "alarm_prob": pred["alarm_prob"]})
+
+    return {
+        "region": region.strip(),
+        "date": date_iso,
+        "hourly_alarm_probabilities": hours,
+        "model_name": pa.name,
+        "uses_hour_feature": hour_feature is not None,
+        "hour_feature_name": hour_feature,
     }
