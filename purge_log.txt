@@ -1,0 +1,5 @@
+nohup: ignoring input
+Traceback (most recent call last):
+  File "/home/ubuntu/python_SaaS/data_receiver/purge_local_live_nightly.py", line 8, in <module>
+    from forecasting.local_live_features import purge_local_live_storage
+ModuleNotFoundError: No module named 'forecasting'

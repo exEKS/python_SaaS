@@ -7,6 +7,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -21,7 +22,7 @@ except ImportError:
 from forecasting.local_live_features import alerts_dir
 
 BASE_URL = "https://api.ukrainealarm.com/api/v3/alerts"
-API_KEY = (os.getenv("UKRAINE_ALARM_TOKEN") or os.getenv("ALARM_API_KEY") or "").strip()
+API_KEY = "fbe6132b:7fa4ed763869f86312cf5924638f546f"
 
 def fetch_and_save_alerts():
     if not API_KEY:
