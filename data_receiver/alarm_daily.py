@@ -20,9 +20,10 @@ except ImportError:
     pass
 
 from forecasting.local_live_features import alerts_dir
+from forecasting.local_live_features import update_hourly_stats_from_payload
 
 BASE_URL = "https://api.ukrainealarm.com/api/v3/alerts"
-API_KEY = "fbe6132b:7fa4ed763869f86312cf5924638f546f"
+API_KEY = (os.getenv("UKRAINE_ALARM_TOKEN") or os.getenv("ALARM_API_KEY") or "").strip()
 
 def fetch_and_save_alerts():
     if not API_KEY:
@@ -46,6 +47,7 @@ def fetch_and_save_alerts():
             
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
+            update_hourly_stats_from_payload(data, now)
             print(f"Дані збережено: {file_name}")
         else:
             print(f"Помилка API: {response.status_code}")

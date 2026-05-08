@@ -41,6 +41,8 @@ data/*.xlsx
 data/*.json
 data/local_live/isw/*.json
 data/local_live/alerts/*.json
+data/local_live/stats/*.json
+data/local_live/stats/*.json
 
 # Models (якщо великі моделі)
 models/*.pt

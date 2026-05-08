@@ -12,6 +12,7 @@ from forecasting.default_feature_row import (
     normalize_region_column,
 )
 from forecasting.local_live_features import live_feature_overrides_for_prediction
+from forecasting.local_live_features import hourly_alert_profile_context
 from forecasting.model_runtime import (
     align_to_estimator,
     binary_proba_vector,
@@ -366,6 +367,12 @@ def predict_hourly_alarm_profile(
         None,
     )
 
+    ctx = hourly_alert_profile_context(region, date_iso)
+    region_prior = ctx.get("region_prior") or [None] * 24
+    national_prior = ctx.get("national_prior") or [None] * 24
+    today_observed = ctx.get("today_observed") or [None] * 24
+    active_hours_today = sum(1 for x in today_observed if x == 1.0)
+
     hours: list[dict] = []
     for h in range(24):
         effective_overrides = dict(feature_overrides or {})
@@ -377,7 +384,33 @@ def predict_hourly_alarm_profile(
             alarm_model=str(pa),
             feature_overrides=effective_overrides or None,
         )
-        hours.append({"hour": h, "alarm_prob": pred["alarm_prob"]})
+        base = float(pred["alarm_prob"])
+        rp = region_prior[h]
+        np = national_prior[h]
+        prior = None
+        if rp is not None and np is not None:
+            prior = 0.7 * float(rp) + 0.3 * float(np)
+        elif rp is not None:
+            prior = float(rp)
+        elif np is not None:
+            prior = float(np)
+
+        blended = base
+        if prior is not None:
+            blended = 0.6 * base + 0.4 * prior
+
+        obs = today_observed[h]
+        if obs is not None:
+            # For already observed hours, trust the observed state more.
+            anchor = 0.9 if obs >= 0.5 else 0.1
+            blended = 0.35 * blended + 0.65 * anchor
+        else:
+            # For future hours, slightly decay if many alert-hours already happened today.
+            fatigue = min(1.0, active_hours_today / 10.0)
+            blended = blended * (1.0 - 0.12 * fatigue)
+
+        blended = float(max(0.0, min(1.0, blended)))
+        hours.append({"hour": h, "alarm_prob": round(blended, 6), "base_prob": round(base, 6)})
 
     return {
         "region": region.strip(),
@@ -386,4 +419,9 @@ def predict_hourly_alarm_profile(
         "model_name": pa.name,
         "uses_hour_feature": hour_feature is not None,
         "hour_feature_name": hour_feature,
+        "hourly_context": {
+            "has_region_prior": any(x is not None for x in region_prior),
+            "has_national_prior": any(x is not None for x in national_prior),
+            "observed_hours_today": active_hours_today,
+        },
     }

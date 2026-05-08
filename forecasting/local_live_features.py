@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 from forecasting.paths import ROOT
@@ -44,6 +45,16 @@ def alerts_dir() -> Path:
     d = local_live_root() / "alerts"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def stats_dir() -> Path:
+    d = local_live_root() / "stats"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def hourly_stats_path() -> Path:
+    return stats_dir() / "hourly_alert_stats.json"
 
 
 def purge_local_live_storage() -> dict[str, int]:
@@ -108,6 +119,10 @@ def _api_name_matches_region(api_region_name: str, predict_region: str) -> bool:
     if key.replace("-", "") in nm.replace(" ", "").replace("-", ""):
         return True
     return key in nm.replace(" ", "-")
+
+
+def _canonical_regions() -> list[str]:
+    return sorted(REGION_ALARM_KEYWORDS.keys())
 
 
 def _isw_text_intensity(text: str) -> float:
@@ -181,6 +196,159 @@ def _latest_alerts_file_for_date(date_str: str) -> Path | None:
         reverse=True,
     )
     return candidates[0] if candidates else None
+
+
+def _iter_alert_files_for_date(date_str: str) -> list[Path]:
+    d = alerts_dir()
+    if not d.is_dir():
+        return []
+    prefix = f"alerts_{date_str}_"
+    return sorted(
+        (p for p in d.glob(f"{prefix}*.json") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+    )
+
+
+def _extract_hour_from_alert_filename(path: Path) -> int | None:
+    m = re.match(r"alerts_(\d{4}-\d{2}-\d{2})_(\d{2})-\d{2}-\d{2}\.json$", path.name)
+    if not m:
+        return None
+    try:
+        h = int(m.group(2))
+    except ValueError:
+        return None
+    if 0 <= h <= 23:
+        return h
+    return None
+
+
+def update_hourly_stats_from_payload(data: object, ts: datetime) -> None:
+    """
+    Persist compact hourly priors from each alerts snapshot.
+    This survives raw-json purge and allows hourly profile shaping.
+    """
+    if not isinstance(data, list):
+        return
+    p = hourly_stats_path()
+    if p.is_file():
+        try:
+            stats = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            stats = {}
+    else:
+        stats = {}
+    if not isinstance(stats, dict):
+        stats = {}
+    stats.setdefault("version", 1)
+    stats.setdefault("hours", {})
+    stats.setdefault("regions", _canonical_regions())
+    hours = stats["hours"]
+
+    hk = str(int(ts.hour))
+    bucket = hours.setdefault(
+        hk,
+        {
+            "samples": 0,
+            "national_alert_ratio_sum": 0.0,
+            "regions": {k: {"active": 0, "samples": 0} for k in _canonical_regions()},
+        },
+    )
+    bucket["samples"] = int(bucket.get("samples", 0)) + 1
+
+    total_rows = 0
+    active_rows = 0
+    region_active_flags = {k: False for k in _canonical_regions()}
+
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        total_rows += 1
+        name = str(row.get("regionName") or row.get("name") or "")
+        alerts = row.get("activeAlerts")
+        if alerts is None:
+            alerts = row.get("alerts")
+        is_active = bool(alerts)
+        if is_active:
+            active_rows += 1
+        for key in region_active_flags:
+            if _api_name_matches_region(name, key):
+                region_active_flags[key] = region_active_flags[key] or is_active
+
+    if total_rows > 0:
+        bucket["national_alert_ratio_sum"] = float(
+            bucket.get("national_alert_ratio_sum", 0.0) + (active_rows / float(total_rows))
+        )
+    for key, is_active in region_active_flags.items():
+        rs = bucket["regions"].setdefault(key, {"active": 0, "samples": 0})
+        rs["samples"] = int(rs.get("samples", 0)) + 1
+        if is_active:
+            rs["active"] = int(rs.get("active", 0)) + 1
+
+    stats["updated_at"] = ts.isoformat(timespec="seconds")
+    p.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def hourly_alert_profile_context(region: str, date_iso: str) -> dict:
+    """
+    Build hourly priors for a region:
+    - historical priors from persisted hourly stats
+    - today's observed active flags from raw snapshots
+    """
+    region_key = _region_match_key(region)
+    region_prior = [None] * 24
+    national_prior = [None] * 24
+
+    sp = hourly_stats_path()
+    if sp.is_file():
+        try:
+            stats = json.loads(sp.read_text(encoding="utf-8"))
+            hours = stats.get("hours", {})
+            for h in range(24):
+                b = hours.get(str(h))
+                if not isinstance(b, dict):
+                    continue
+                samples = int(b.get("samples", 0))
+                if samples > 0:
+                    national_prior[h] = float(b.get("national_alert_ratio_sum", 0.0)) / float(samples)
+                rb = (b.get("regions") or {}).get(region_key)
+                if isinstance(rb, dict):
+                    rs = int(rb.get("samples", 0))
+                    if rs > 0:
+                        region_prior[h] = float(rb.get("active", 0)) / float(rs)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    date_part = (date_iso or "")[:10]
+    today_observed = [None] * 24
+    for f in _iter_alert_files_for_date(date_part):
+        h = _extract_hour_from_alert_filename(f)
+        if h is None:
+            continue
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, list):
+            continue
+        is_active = False
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("regionName") or row.get("name") or "")
+            alerts = row.get("activeAlerts")
+            if alerts is None:
+                alerts = row.get("alerts")
+            if _api_name_matches_region(name, region_key):
+                is_active = bool(alerts)
+                break
+        today_observed[h] = 1.0 if is_active else 0.0
+
+    return {
+        "region_key": region_key,
+        "region_prior": region_prior,
+        "national_prior": national_prior,
+        "today_observed": today_observed,
+    }
 
 
 def live_feature_overrides_for_prediction(
