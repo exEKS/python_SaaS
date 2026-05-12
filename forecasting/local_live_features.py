@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from forecasting.default_feature_row import DEMO_BATCH_DICT
 from forecasting.paths import ROOT
 
 HIGH_SIGNAL_TERMS = (
@@ -55,6 +56,284 @@ def stats_dir() -> Path:
 
 def hourly_stats_path() -> Path:
     return stats_dir() / "hourly_alert_stats.json"
+
+
+def weather_history_path() -> Path:
+    """Visual Crossing snapshot written by `forecasting/weather_collector.py`."""
+    return local_live_root() / "weather_history.json"
+
+
+# City keys in `weather_history.json` match Visual Crossing timeline names
+# (see `forecasting/weather_collector.py` REGIONS).
+_WEATHER_VC_CITIES: frozenset[str] = frozenset(
+    {
+        "Kyiv",
+        "Vinnytsia",
+        "Lutsk",
+        "Dnipro",
+        "Donetsk",
+        "Zhytomyr",
+        "Uzhhorod",
+        "Zaporizhzhia",
+        "Ivano-Frankivsk",
+        "Kropyvnytskyi",
+        "Luhansk",
+        "Lviv",
+        "Mykolaiv",
+        "Odesa",
+        "Poltava",
+        "Rivne",
+        "Sumy",
+        "Ternopil",
+        "Kharkiv",
+        "Kherson",
+        "Khmelnytskyi",
+        "Cherkasy",
+        "Chernivtsi",
+        "Chernihiv",
+        "Simferopol",
+    }
+)
+
+# Map API / UI region tokens → Visual Crossing city key in `weather_history.json`
+_API_TOKEN_TO_VC_CITY: dict[str, str] = {
+    "kyiv": "Kyiv",
+    "kiev": "Kyiv",
+    "kharkiv": "Kharkiv",
+    "lviv": "Lviv",
+    "odesa": "Odesa",
+    "odessa": "Odesa",
+    "dnipro": "Dnipro",
+    "dnipropetrovsk": "Dnipro",
+    "zaporizhzhia": "Zaporizhzhia",
+    "donetsk": "Donetsk",
+    "vinnytsia": "Vinnytsia",
+    "chernihiv": "Chernihiv",
+    "cherkasy": "Cherkasy",
+    "chernivtsi": "Chernivtsi",
+    "ivano-frankivsk": "Ivano-Frankivsk",
+    "kherson": "Kherson",
+    "khmelnytskyi": "Khmelnytskyi",
+    "kirovohrad": "Kropyvnytskyi",
+    "kropyvnytskyi": "Kropyvnytskyi",
+    "luhansk": "Luhansk",
+    "mykolaiv": "Mykolaiv",
+    "poltava": "Poltava",
+    "rivne": "Rivne",
+    "sumy": "Sumy",
+    "ternopil": "Ternopil",
+    "zhytomyr": "Zhytomyr",
+    "zakarpattia": "Uzhhorod",
+    "uzhhorod": "Uzhhorod",
+    "volyn": "Lutsk",
+    "lutsk": "Lutsk",
+    "crimea": "Simferopol",
+    "sevastopol": "Simferopol",
+}
+
+_WEATHER_COLS: frozenset[str] = frozenset(
+    k for k in DEMO_BATCH_DICT if k.startswith("weather_")
+)
+
+_WH_JSON_CACHE: tuple[float | None, dict | None] = (None, None)
+
+
+def _read_weather_history_json() -> dict | None:
+    path = weather_history_path()
+    if not path.is_file():
+        return None
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    global _WH_JSON_CACHE
+    if _WH_JSON_CACHE[0] == mtime and isinstance(_WH_JSON_CACHE[1], dict):
+        return _WH_JSON_CACHE[1]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    _WH_JSON_CACHE = (mtime, data)
+    return data
+
+
+def visual_crossing_city_for_region(region: str) -> str | None:
+    """Resolve API `region` string to a key present in `weather_history.json`."""
+    raw = (region or "").strip()
+    if not raw:
+        return None
+    if raw in _WEATHER_VC_CITIES:
+        return raw
+    low = raw.lower()
+    if low in _API_TOKEN_TO_VC_CITY:
+        return _API_TOKEN_TO_VC_CITY[low]
+    slug = re.sub(r"[^a-z0-9]+", "-", low).strip("-")
+    if slug in _API_TOKEN_TO_VC_CITY:
+        return _API_TOKEN_TO_VC_CITY[slug]
+    for token, city in _API_TOKEN_TO_VC_CITY.items():
+        if token and (token in slug or token in low):
+            return city
+    for city in _WEATHER_VC_CITIES:
+        if city.lower() == low:
+            return city
+    return None
+
+
+def _weather_history_pick_date(history: dict, date_part: str) -> str | None:
+    dates = sorted(
+        k
+        for k in history
+        if isinstance(k, str) and len(k) >= 10 and k[0:4].isdigit() and k[4] == "-"
+    )
+    if not dates:
+        return None
+    if date_part in history and isinstance(history.get(date_part), dict):
+        return date_part
+    past = [d for d in dates if d <= date_part]
+    if past:
+        return past[-1]
+    return dates[-1]
+
+
+def _float_or_none(v: object) -> float | None:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _conditions_from_region_blob(blob: dict) -> str:
+    c = blob.get("conditions")
+    if isinstance(c, str) and c.strip():
+        return c.strip()
+    hours = blob.get("hours")
+    if isinstance(hours, list):
+        for h in hours:
+            if isinstance(h, dict):
+                hc = h.get("conditions")
+                if isinstance(hc, str) and hc.strip():
+                    return hc.strip()
+    return ""
+
+
+def _weather_one_hot_overrides(conditions: str) -> dict[str, float]:
+    """Match Visual Crossing `conditions` text to model one-hot `weather_*` columns."""
+    out: dict[str, float] = {c: 0.0 for c in _WEATHER_COLS}
+    if not conditions:
+        out["weather_Overcast"] = 1.0
+        return out
+
+    segments = [s.strip() for s in conditions.split(",") if s.strip()]
+    chosen: str | None = None
+    for seg in segments:
+        token = re.sub(r"\s+", "_", seg.strip())
+        col = f"weather_{token}"
+        if col in out:
+            chosen = col
+            break
+    if chosen is None:
+        low = conditions.lower()
+        for col in sorted(out.keys(), key=len, reverse=True):
+            suf = col.replace("weather_", "").replace("_", " ").lower()
+            if len(suf) >= 4 and suf in low:
+                chosen = col
+                break
+    if chosen is None:
+        out["weather_Overcast"] = 1.0
+    else:
+        out[chosen] = 1.0
+    return out
+
+
+def weather_feature_overrides_for_prediction(
+    region: str, date_part: str
+) -> tuple[dict[str, float], dict]:
+    """
+    Build feature overrides from `weather_history.json` (Visual Crossing snapshot).
+
+    Fills day_temp / day_tempmax / day_tempmin / day_humidity / day_windspeed and
+    `weather_*` one-hots when the file and region city exist.
+    """
+    if os.environ.get("WARWATCH_DISABLE_WEATHER_HISTORY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return {}, {}
+
+    city = visual_crossing_city_for_region(region)
+    if city is None:
+        return {}, {}
+
+    history = _read_weather_history_json()
+    if not history:
+        return {}, {}
+
+    picked = _weather_history_pick_date(history, date_part)
+    if not picked:
+        return {}, {}
+
+    day_entry = history.get(picked)
+    if not isinstance(day_entry, dict):
+        return {}, {}
+
+    regions = day_entry.get("regions")
+    if not isinstance(regions, dict):
+        return {}, {}
+
+    blob = regions.get(city)
+    if not isinstance(blob, dict):
+        return {}, {}
+
+    overrides: dict[str, float] = {}
+
+    t = _float_or_none(blob.get("temp"))
+    if t is not None:
+        overrides["day_temp"] = t
+
+    h = _float_or_none(blob.get("humidity"))
+    if h is not None:
+        overrides["day_humidity"] = h
+
+    ws = _float_or_none(blob.get("windspeed"))
+    if ws is not None:
+        overrides["day_windspeed"] = ws
+
+    tmax = _float_or_none(blob.get("tempmax")) or _float_or_none(blob.get("tempMax"))
+    tmin = _float_or_none(blob.get("tempmin")) or _float_or_none(blob.get("tempMin"))
+    hours = blob.get("hours")
+    hour_temps: list[float] = []
+    if isinstance(hours, list):
+        for hr in hours:
+            if isinstance(hr, dict):
+                tv = _float_or_none(hr.get("temp"))
+                if tv is not None:
+                    hour_temps.append(tv)
+    if tmax is None and hour_temps:
+        tmax = max(hour_temps)
+    if tmin is None and hour_temps:
+        tmin = min(hour_temps)
+    if tmax is not None:
+        overrides["day_tempmax"] = tmax
+    if tmin is not None:
+        overrides["day_tempmin"] = tmin
+
+    cond = _conditions_from_region_blob(blob)
+    overrides.update(_weather_one_hot_overrides(cond))
+
+    meta = {
+        "weather_history_file": weather_history_path().name,
+        "weather_date": picked,
+        "weather_city": city,
+    }
+    if cond:
+        meta["weather_conditions"] = cond[:120]
+    return overrides, meta
 
 
 def purge_local_live_storage() -> dict[str, int]:
@@ -356,17 +635,10 @@ def live_feature_overrides_for_prediction(
     date_iso: str,
 ) -> tuple[dict[str, float], dict]:
     """
-    Build feature overrides from ISW + Ukraine Alarm JSON snapshots on disk.
+    Build feature overrides from ISW + Ukraine Alarm JSON snapshots on disk,
+    plus `weather_history.json` (Visual Crossing) when available.
     Explicit API query overrides should be merged after this (they win).
     """
-    if os.environ.get("WARWATCH_DISABLE_LOCAL_LIVE", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
-        return {}, {}
-
     date_part = (date_iso or "")[:10]
     if len(date_part) != 10:
         return {}, {}
@@ -374,24 +646,36 @@ def live_feature_overrides_for_prediction(
     meta: dict = {}
     overrides: dict[str, float] = {}
 
-    isw_path = isw_dir() / f"isw_data_{date_part}.json"
-    if isw_path.is_file():
-        try:
-            payload = json.loads(isw_path.read_text(encoding="utf-8"))
-            text = str(payload.get("text") or "")
-            overrides["text_intensity_index"] = _isw_text_intensity(text)
-            meta["isw"] = isw_path.name
-        except (OSError, json.JSONDecodeError):
-            pass
+    if os.environ.get("WARWATCH_DISABLE_LOCAL_LIVE", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        isw_path = isw_dir() / f"isw_data_{date_part}.json"
+        if isw_path.is_file():
+            try:
+                payload = json.loads(isw_path.read_text(encoding="utf-8"))
+                text = str(payload.get("text") or "")
+                overrides["text_intensity_index"] = _isw_text_intensity(text)
+                meta["isw"] = isw_path.name
+            except (OSError, json.JSONDecodeError):
+                pass
 
-    alerts_path = _latest_alerts_file_for_date(date_part)
-    if alerts_path is not None:
-        try:
-            payload = json.loads(alerts_path.read_text(encoding="utf-8"))
-            alarm_feats = _summarize_alerts_payload(payload, region)
-            overrides.update(alarm_feats)
-            meta["alerts"] = alerts_path.name
-        except (OSError, json.JSONDecodeError):
-            pass
+        alerts_path = _latest_alerts_file_for_date(date_part)
+        if alerts_path is not None:
+            try:
+                payload = json.loads(alerts_path.read_text(encoding="utf-8"))
+                alarm_feats = _summarize_alerts_payload(payload, region)
+                overrides.update(alarm_feats)
+                meta["alerts"] = alerts_path.name
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    w_over, w_meta = weather_feature_overrides_for_prediction(region, date_part)
+    if w_over:
+        overrides.update(w_over)
+    if w_meta:
+        meta["weather"] = w_meta
 
     return overrides, meta
