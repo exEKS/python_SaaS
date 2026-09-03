@@ -29,7 +29,7 @@
 
 | Role | Name |
 |------|------|
-| Team Leader | Ковальов Євген |
+| Team Leader | exEKS |
 | Member | Тавлуй Софія |
 | Member | Поляков Кирило |
 | Member | Сніховська Владислава |
@@ -311,7 +311,7 @@ WARWATCH_MODEL_ARTILLERY=
 
 | Team Member | Contribution |
 |-------------|-------------|
-| **Kovalov Evgen** | Inference script, full SaaS deployment (UI + API), prediction storage & retrieval, retraining pipeline setup, demo video, final report, frontend & backend |
+| **exEKS** | Inference script, full SaaS deployment (UI + API), prediction storage & retrieval, retraining pipeline setup, demo video, final report, frontend & backend |
 | **Tavlui Sofiia** | Top model selection & motivation, model retraining, 24h prediction API endpoint, automated retraining script with historical + new data and model validation |
 | **Snikhovska Vladyslava** | RandomForest model training & development, forecast update endpoint, README editing, final report & presentation, demo video |
 | **Poliakov Kyrylo** | CatBoost model training & tuning, automated 24h regional forecasting via hourly Cron on AWS EC2, retraining pipeline with automated validation |
